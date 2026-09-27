@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 0.1.0a1 - 2026-09-27
+
 ### Added
 - OpenAPI 3.1 contract: notices, consents, receipts, rights requests, principal export, admin request
   queue, retention preview, audit export, ledger verification, activity signals. Incident endpoints

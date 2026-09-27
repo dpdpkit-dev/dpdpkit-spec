@@ -19,7 +19,7 @@ from typing import Any
 import yaml
 from jsonschema import Draft202012Validator, FormatChecker
 
-__version__ = "0.1.0.dev0"
+__version__ = "0.1.0a1"
 
 PRINCIPAL_HEADER = "X-DPDP-Test-Principal"
 ROLE_HEADER = "X-DPDP-Test-Role"
