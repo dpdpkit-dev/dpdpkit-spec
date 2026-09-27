@@ -1,0 +1,42 @@
+[build-system]
+requires = ["hatchling>=1.25"]
+build-backend = "hatchling.build"
+
+[project]
+name = "dpdpkit-conformance"
+dynamic = ["version"]
+description = "The dpdpkit REST contract (OpenAPI 3.1) and the black-box conformance suite every adapter must pass."
+readme = "README.md"
+license = "Apache-2.0"
+license-files = ["LICENSE"]
+requires-python = ">=3.10"
+dependencies = ["pytest>=8", "httpx>=0.27", "jsonschema>=4.21", "pyyaml>=6.0"]
+
+[project.optional-dependencies]
+asgi = ["starlette>=0.37"]
+dev = ["ruff>=0.6", "openapi-spec-validator>=0.7", "fastapi>=0.110"]
+
+[project.scripts]
+dpdpkit-conformance = "dpdpkit_conformance.__main__:main"
+
+[project.urls]
+Homepage = "https://github.com/dpdpkit-dev/dpdpkit-spec"
+
+[tool.hatch.version]
+path = "src/dpdpkit_conformance/__init__.py"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/dpdpkit_conformance"]
+
+[tool.hatch.build.targets.wheel.force-include]
+"openapi.yaml" = "dpdpkit_conformance/openapi.yaml"
+
+[tool.ruff]
+line-length = 120
+target-version = "py310"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "B", "UP", "RUF"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

@@ -1,0 +1,610 @@
+openapi: 3.1.0
+info:
+  title: dpdpkit REST contract
+  version: 0.1.0
+  summary: The one HTTP contract every dpdpkit adapter and dpdpkit-server exposes.
+  description: |
+    Paths are relative to the mount point chosen by the host application (conventionally `/dpdp`).
+
+    **Who is calling.** Public endpoints act for the *principal* that the host application resolves from its
+    own session (the adapter's `principal_resolver`), or from a signed end-user token when served by
+    dpdpkit-server. Admin endpoints require a role from the adapter's `admin_guard`: `viewer` (read),
+    `handler` (work requests), `admin` (everything).
+
+    **Service callers (dpdpkit-server, Phase 2).** A backend authenticated with an API key may act for a
+    principal by sending `X-DPDP-Principal: <principal ref>`. Framework adapters ignore this header because
+    they resolve the principal from the host application's own session.
+
+    **Conformance mode.** When an app runs the conformance suite it must resolve the principal from the
+    `X-DPDP-Test-Principal` header and the admin role from `X-DPDP-Test-Role`. Apps must enable this only
+    in test configuration.
+
+    **Errors.** Every non-2xx response has the `Error` body. `error.code` is stable and machine-readable.
+
+    dpdpkit helps implement DPDP obligations; it does not provide legal advice or guarantee compliance.
+  license:
+    name: Apache-2.0
+    identifier: Apache-2.0
+servers:
+  - url: /dpdp
+tags:
+  - name: notices
+  - name: consents
+  - name: requests
+  - name: principal
+  - name: admin
+  - name: events
+
+paths:
+  /notices/current:
+    get:
+      tags: [notices]
+      operationId: getCurrentNotice
+      summary: Current notice in the requested language, falling back to the pack's default language.
+      security: []
+      parameters:
+        - name: locale
+          in: query
+          schema: { type: string, examples: [hi, hi-IN, en] }
+      responses:
+        "200":
+          description: The notice.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Notice" }
+        "404": { $ref: "#/components/responses/Error" }
+
+  /consents:
+    post:
+      tags: [consents]
+      operationId: recordConsents
+      summary: Grant or deny consent per purpose against one notice version.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ConsentDecisionRequest" }
+      responses:
+        "201":
+          description: Recorded consent states, one per decision.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ConsentList" }
+        "401": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+        "422": { $ref: "#/components/responses/Error" }
+
+  /consents/{purpose}/withdraw:
+    post:
+      tags: [consents]
+      operationId: withdrawConsent
+      summary: Withdraw consent for one purpose. One call, as easy as granting.
+      parameters:
+        - { name: purpose, in: path, required: true, schema: { type: string } }
+      responses:
+        "200":
+          description: The new state.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ConsentState" }
+        "401": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+        "409": { $ref: "#/components/responses/Error" }
+        "422": { $ref: "#/components/responses/Error" }
+
+  /consents/me:
+    get:
+      tags: [consents]
+      operationId: getMyConsents
+      responses:
+        "200":
+          description: Current consent per purpose for the calling principal.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ConsentList" }
+        "401": { $ref: "#/components/responses/Error" }
+
+  /consents/me/receipt:
+    get:
+      tags: [consents]
+      operationId: getMyConsentReceipt
+      responses:
+        "200":
+          description: A signed receipt of current consents, anchored to the ledger head.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ConsentReceipt" }
+        "401": { $ref: "#/components/responses/Error" }
+
+  /requests:
+    post:
+      tags: [requests]
+      operationId: openRequest
+      summary: Open a rights request or grievance.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/RightsRequestCreate" }
+      responses:
+        "201":
+          description: The request, with its due dates.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/RightsRequest" }
+        "401": { $ref: "#/components/responses/Error" }
+        "422": { $ref: "#/components/responses/Error" }
+    get:
+      tags: [requests]
+      operationId: listMyRequests
+      responses:
+        "200":
+          description: The calling principal's requests.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items: { type: array, items: { $ref: "#/components/schemas/RightsRequest" } }
+        "401": { $ref: "#/components/responses/Error" }
+
+  /requests/{id}:
+    get:
+      tags: [requests]
+      operationId: getRequest
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      responses:
+        "200":
+          description: The request. Principals only see their own; others get 404.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/RightsRequest" }
+        "401": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+
+  /me/export:
+    get:
+      tags: [principal]
+      operationId: exportMyData
+      summary: Summary of the principal's personal data and processing.
+      parameters:
+        - name: format
+          in: query
+          schema: { type: string, enum: [json, html], default: json }
+      responses:
+        "200":
+          description: The export.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/PrincipalExport" }
+            text/html:
+              schema: { type: string }
+        "401": { $ref: "#/components/responses/Error" }
+
+  /admin/requests:
+    get:
+      tags: [admin]
+      operationId: adminListRequests
+      x-dpdpkit-role: viewer
+      parameters:
+        - name: status
+          in: query
+          schema: { $ref: "#/components/schemas/RequestStatus" }
+        - name: open
+          in: query
+          schema: { type: boolean }
+      responses:
+        "200":
+          description: Request queue.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items: { type: array, items: { $ref: "#/components/schemas/AdminRightsRequest" } }
+        "401": { $ref: "#/components/responses/Error" }
+        "403": { $ref: "#/components/responses/Error" }
+
+  /admin/requests/{id}:
+    get:
+      tags: [admin]
+      operationId: adminGetRequest
+      x-dpdpkit-role: viewer
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      responses:
+        "200":
+          description: The request.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AdminRightsRequest" }
+        "403": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+    patch:
+      tags: [admin]
+      operationId: adminUpdateRequest
+      summary: Assign, start, verify identity, respond to or reject a request.
+      x-dpdpkit-role: handler
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/AdminRequestUpdate" }
+      responses:
+        "200":
+          description: The updated request.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AdminRightsRequest" }
+        "403": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+        "409": { $ref: "#/components/responses/Error" }
+        "422": { $ref: "#/components/responses/Error" }
+
+  /admin/retention/preview:
+    get:
+      tags: [admin]
+      operationId: adminRetentionPreview
+      x-dpdpkit-role: viewer
+      parameters:
+        - name: hours
+          in: query
+          schema: { type: integer, minimum: 1, default: 168 }
+      responses:
+        "200":
+          description: Upcoming warnings and erasures, and schedules needing attention.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/RetentionPreview" }
+        "403": { $ref: "#/components/responses/Error" }
+
+  /admin/incidents:
+    x-dpdpkit-phase: 2
+    get:
+      tags: [admin]
+      operationId: adminListIncidents
+      x-dpdpkit-role: viewer
+      responses:
+        "200":
+          description: Incident register.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items: { type: array, items: { $ref: "#/components/schemas/Incident" } }
+        "501": { $ref: "#/components/responses/Error" }
+    post:
+      tags: [admin]
+      operationId: adminCreateIncident
+      x-dpdpkit-role: handler
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/IncidentCreate" }
+      responses:
+        "201":
+          description: The incident with its reporting clocks.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Incident" }
+        "501": { $ref: "#/components/responses/Error" }
+
+  /admin/incidents/{id}/report:
+    x-dpdpkit-phase: 2
+    get:
+      tags: [admin]
+      operationId: adminIncidentReportDraft
+      summary: Draft report. dpdpkit never submits anything to an authority.
+      x-dpdpkit-role: handler
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      responses:
+        "200":
+          description: Draft report.
+          content:
+            text/markdown:
+              schema: { type: string }
+        "501": { $ref: "#/components/responses/Error" }
+
+  /admin/audit/export:
+    get:
+      tags: [admin]
+      operationId: adminAuditExport
+      x-dpdpkit-role: admin
+      responses:
+        "200":
+          description: Evidence pack (CSV + PDF in a zip).
+          content:
+            application/zip:
+              schema: { type: string, contentMediaType: application/zip }
+        "403": { $ref: "#/components/responses/Error" }
+
+  /admin/ledger/verify:
+    post:
+      tags: [admin]
+      operationId: adminVerifyLedger
+      x-dpdpkit-role: viewer
+      responses:
+        "200":
+          description: Result of checking both hash chains. `ok` is false and `failed_row` names the row on tampering.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/LedgerVerification" }
+        "403": { $ref: "#/components/responses/Error" }
+
+  /events/activity:
+    post:
+      tags: [events]
+      operationId: recordActivity
+      summary: Activity signal from another service. Restarts inactivity clocks and cancels warned erasures.
+      x-dpdpkit-role: handler
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ActivitySignal" }
+      responses:
+        "202":
+          description: Accepted.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [accepted]
+                properties:
+                  accepted: { type: boolean, const: true }
+        "403": { $ref: "#/components/responses/Error" }
+        "422": { $ref: "#/components/responses/Error" }
+
+components:
+  responses:
+    Error:
+      description: Error.
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+
+  schemas:
+    Error:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: object
+          required: [code, message]
+          properties:
+            code:
+              type: string
+              examples: [consent_required, not_found, invalid_request, invalid_transition, unauthenticated, forbidden]
+            message: { type: string }
+            details: { type: object, additionalProperties: true }
+
+    Timestamp: { type: string, format: date-time }
+
+    LegalBasis:
+      type: string
+      enum: [consent, s7_a, s7_b, s7_c, s7_d, s7_e, s7_f, s7_g, s7_h, s7_i]
+
+    NoticePurpose:
+      type: object
+      required: [id, title, data_items, legal_basis, required]
+      properties:
+        id: { type: string }
+        title: { type: string }
+        description: { type: string }
+        data_items: { type: array, items: { type: string } }
+        legal_basis: { $ref: "#/components/schemas/LegalBasis" }
+        required: { type: boolean }
+
+    Notice:
+      type: object
+      required: [version, locale, content_hash, published_at, title, purposes, links, available_locales]
+      properties:
+        version: { type: integer, minimum: 1 }
+        locale: { type: string }
+        content_hash: { type: string, pattern: "^[0-9a-f]{64}$" }
+        published_at: { $ref: "#/components/schemas/Timestamp" }
+        title: { type: string }
+        body: { type: string }
+        purposes: { type: array, items: { $ref: "#/components/schemas/NoticePurpose" } }
+        links:
+          type: object
+          description: Must contain every link the active policy pack requires (withdraw, rights, board_complaint).
+          additionalProperties: { type: string }
+        contact: { type: object, additionalProperties: { type: string } }
+        available_locales: { type: array, items: { type: string } }
+
+    ConsentDecisionRequest:
+      type: object
+      required: [decisions]
+      properties:
+        notice_version:
+          type: integer
+          description: The notice version shown to the principal. Defaults to the current version.
+        locale: { type: string }
+        decisions:
+          type: array
+          minItems: 1
+          items:
+            type: object
+            required: [purpose, granted]
+            properties:
+              purpose: { type: string }
+              granted: { type: boolean }
+
+    ConsentStatus:
+      type: string
+      enum: [granted, denied, withdrawn]
+
+    ConsentState:
+      type: object
+      required: [purpose, status, updated_at, event_id]
+      properties:
+        purpose: { type: string }
+        status: { $ref: "#/components/schemas/ConsentStatus" }
+        notice_version: { type: [integer, "null"] }
+        updated_at: { $ref: "#/components/schemas/Timestamp" }
+        event_id: { type: string }
+
+    ConsentList:
+      type: object
+      required: [consents]
+      properties:
+        consents: { type: array, items: { $ref: "#/components/schemas/ConsentState" } }
+
+    ConsentReceipt:
+      type: object
+      required: [receipt_id, principal, issued_at, consents, ledger_head, algorithm, signature]
+      properties:
+        receipt_id: { type: string }
+        principal: { type: string }
+        issued_at: { $ref: "#/components/schemas/Timestamp" }
+        consents: { type: array, items: { $ref: "#/components/schemas/ConsentState" } }
+        ledger_head: { type: string, pattern: "^[0-9a-f]{64}$" }
+        algorithm: { type: string, const: HMAC-SHA256 }
+        signature: { type: string, pattern: "^[0-9a-f]{64}$" }
+
+    RequestKind:
+      type: string
+      enum: [access, correction, completion, updating, erasure, nomination, grievance]
+
+    RequestStatus:
+      type: string
+      enum: [received, identity_pending, in_progress, completed, rejected]
+
+    RightsRequestCreate:
+      type: object
+      required: [kind]
+      properties:
+        kind: { $ref: "#/components/schemas/RequestKind" }
+        details:
+          type: object
+          additionalProperties: true
+          description: Free-form details. Nominations require `name` and `contact`.
+
+    RightsRequest:
+      type: object
+      required: [id, kind, status, opened_at, due_at, max_due_at, overdue]
+      properties:
+        id: { type: string }
+        kind: { $ref: "#/components/schemas/RequestKind" }
+        status: { $ref: "#/components/schemas/RequestStatus" }
+        opened_at: { $ref: "#/components/schemas/Timestamp" }
+        due_at: { $ref: "#/components/schemas/Timestamp" }
+        max_due_at: { $ref: "#/components/schemas/Timestamp" }
+        details: { type: object, additionalProperties: true }
+        response: { type: [string, "null"] }
+        response_contact: { type: [object, "null"], additionalProperties: { type: string } }
+        outcome: { type: [string, "null"] }
+        closed_at: { oneOf: [{ $ref: "#/components/schemas/Timestamp" }, { type: "null" }] }
+        overdue: { type: boolean }
+
+    AdminRightsRequest:
+      allOf:
+        - $ref: "#/components/schemas/RightsRequest"
+        - type: object
+          required: [principal]
+          properties:
+            principal: { type: string }
+            assignee: { type: [string, "null"] }
+            identity_verified: { type: [boolean, "null"] }
+
+    AdminRequestUpdate:
+      type: object
+      required: [action]
+      properties:
+        action: { type: string, enum: [assign, start, verify_identity, respond, reject] }
+        assignee: { type: string }
+        verified: { type: boolean }
+        method: { type: string }
+        message: { type: string, description: "Response text (respond) or reason (reject)." }
+
+    PreviewItem:
+      type: object
+      required: [schedule_id, principal, purpose, action, at, status]
+      properties:
+        schedule_id: { type: string }
+        principal: { type: string }
+        purpose: { type: string }
+        action: { type: string, enum: [warn, erase] }
+        at: { $ref: "#/components/schemas/Timestamp" }
+        status: { type: string }
+
+    RetentionPreview:
+      type: object
+      required: [items, needs_attention]
+      properties:
+        items: { type: array, items: { $ref: "#/components/schemas/PreviewItem" } }
+        needs_attention:
+          type: array
+          items:
+            type: object
+            required: [schedule_id, principal, purpose, reason]
+            properties:
+              schedule_id: { type: string }
+              principal: { type: string }
+              purpose: { type: string }
+              reason: { type: [string, "null"] }
+
+    LedgerVerification:
+      type: object
+      required: [ok, checked, consent_head, audit_head, verified_at]
+      properties:
+        ok: { type: boolean }
+        checked: { type: integer, minimum: 0 }
+        consent_head: { type: string }
+        audit_head: { type: string }
+        failed_row: { type: [string, "null"] }
+        chain: { type: [string, "null"] }
+        reason: { type: [string, "null"] }
+        verified_at: { $ref: "#/components/schemas/Timestamp" }
+
+    ActivitySignal:
+      type: object
+      required: [principal]
+      properties:
+        principal: { type: string, minLength: 1 }
+        at: { $ref: "#/components/schemas/Timestamp" }
+
+    PrincipalExport:
+      type: object
+      required: [principal, generated_at, consents, requests, purposes]
+      properties:
+        principal: { type: string }
+        generated_at: { $ref: "#/components/schemas/Timestamp" }
+        fiduciary: { type: object, additionalProperties: true }
+        consents: { type: array, items: { $ref: "#/components/schemas/ConsentState" } }
+        consent_history: { type: array, items: { type: object, additionalProperties: true } }
+        requests: { type: array, items: { type: object, additionalProperties: true } }
+        nominees: { type: array, items: { type: object, additionalProperties: true } }
+        purposes: { type: array, items: { type: object, additionalProperties: true } }
+        erasure_schedules: { type: array, items: { type: object, additionalProperties: true } }
+        data: { type: object, additionalProperties: true }
+
+    IncidentCreate:
+      type: object
+      required: [title, aware_at]
+      properties:
+        title: { type: string }
+        aware_at: { $ref: "#/components/schemas/Timestamp" }
+        description: { type: string }
+        affected_count: { type: integer, minimum: 0 }
+
+    Incident:
+      type: object
+      required: [id, title, aware_at, board_report_due]
+      properties:
+        id: { type: string }
+        title: { type: string }
+        aware_at: { $ref: "#/components/schemas/Timestamp" }
+        board_report_due: { $ref: "#/components/schemas/Timestamp" }
+        cert_in_report_due: { oneOf: [{ $ref: "#/components/schemas/Timestamp" }, { type: "null" }] }
+        status: { type: string }

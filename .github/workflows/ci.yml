@@ -1,0 +1,51 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  spec:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          python-version: "3.12"
+      - run: |
+          uv venv && uv pip install -e ".[asgi,dev]"
+          echo "$PWD/.venv/bin" >> "$GITHUB_PATH"
+      - run: ruff check . && ruff format --check .
+      - name: Spec is valid OpenAPI 3.1 and covers the contract
+        run: pytest
+
+  # The suite itself is exercised against the reference adapter so a broken test is caught here,
+  # not in every adapter's CI.
+  suite-against-fastapi:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+        with:
+          repository: dpdpkit-dev/dpdpkit-fastapi
+          path: _fastapi
+      - uses: astral-sh/setup-uv@v6
+        with:
+          python-version: "3.12"
+      - run: |
+          uv venv
+          uv pip install -e ".[asgi]" \
+            "dpdpkit-policies @ git+https://github.com/dpdpkit-dev/dpdpkit-policies@main" \
+            "dpdpkit-core @ git+https://github.com/dpdpkit-dev/dpdpkit-core@main" \
+            -e "./_fastapi"
+      - name: Conformance against examples/fastapi-shop
+        working-directory: _fastapi/examples/fastapi_shop
+        env:
+          DPDPKIT_ASGI_APP: app:app
+          DPDPKIT_CONFORMANCE: "1"
+        run: ../../../.venv/bin/dpdpkit-conformance -q
