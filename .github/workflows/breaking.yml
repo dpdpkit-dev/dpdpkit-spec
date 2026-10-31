@@ -15,7 +15,7 @@ jobs:
   oasdiff:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - run: git fetch --depth=1 origin ${{ github.base_ref }}
       - name: Report all changes (informational)
         uses: oasdiff/oasdiff-action/breaking@v0
