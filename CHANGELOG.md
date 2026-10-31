@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+### Added
+- Breaking-change check (oasdiff) on pull requests that touch `openapi.yaml`; override with the
+  `breaking-change` label.
+
 ## 0.1.0a1 - 2026-09-27
 
 ### Added

@@ -35,7 +35,11 @@ Any adapter that fails the suite is not released (release-train rule).
 ## Changing the contract
 
 - Additive changes (new optional field, new endpoint) are minor releases.
-- Removing or renaming anything is a breaking change: bump the major version and deprecate first.
+- Removing or renaming anything is a breaking change: deprecate first, then bump the major version
+  (the minor version while dpdpkit is below 1.0).
+- Pull requests that touch `openapi.yaml` run [oasdiff](https://github.com/oasdiff/oasdiff). A breaking
+  change fails the check unless the PR has the `breaking-change` label and a CHANGELOG entry under
+  "Breaking".
 - Every change updates the conformance suite in the same pull request.
 
 ## Licence

@@ -1,0 +1,33 @@
+# Fail a pull request that makes a breaking change to openapi.yaml (removed endpoint, new required
+# field, narrowed type...). An intentional break gets the `breaking-change` label, a CHANGELOG entry
+# under "Breaking", and a version bump of the release train (minor below 1.0, major after).
+name: Breaking changes
+
+on:
+  pull_request:
+    paths: [openapi.yaml]
+    types: [opened, synchronize, reopened, labeled, unlabeled]
+
+permissions:
+  contents: read
+
+jobs:
+  oasdiff:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: git fetch --depth=1 origin ${{ github.base_ref }}
+      - name: Report all changes (informational)
+        uses: oasdiff/oasdiff-action/breaking@v0
+        with:
+          base: "origin/${{ github.base_ref }}:openapi.yaml"
+          revision: "HEAD:openapi.yaml"
+          review: false
+      - name: Fail on breaking changes unless labelled `breaking-change`
+        if: ${{ !contains(github.event.pull_request.labels.*.name, 'breaking-change') }}
+        uses: oasdiff/oasdiff-action/breaking@v0
+        with:
+          base: "origin/${{ github.base_ref }}:openapi.yaml"
+          revision: "HEAD:openapi.yaml"
+          fail-on: ERR
+          review: false
