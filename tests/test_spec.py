@@ -19,6 +19,8 @@ CONTRACT = {
     ("get", "/admin/incidents"),
     ("post", "/admin/incidents"),
     ("get", "/admin/incidents/{id}/report"),
+    ("post", "/guardian/verify/start"),
+    ("post", "/guardian/verify/callback"),
     ("get", "/admin/audit/export"),
     ("post", "/admin/ledger/verify"),
     ("post", "/events/activity"),

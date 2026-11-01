@@ -4,9 +4,11 @@ from __future__ import annotations
 
 import io
 import zipfile
+from datetime import datetime, timedelta, timezone
 from typing import Any
 
 import httpx
+import pytest
 
 from dpdpkit_conformance import assert_schema
 
@@ -212,6 +214,100 @@ def test_audit_export_is_a_zip(client: httpx.Client) -> None:
     assert resp.headers["content-type"].startswith("application/zip")
     with zipfile.ZipFile(io.BytesIO(resp.content)) as zf:
         assert "consent_events.csv" in zf.namelist()
+
+
+# --------------------------------------------------------------------------- incidents (phase 2)
+
+
+def _ts(value: str) -> datetime:
+    return datetime.fromisoformat(value.replace("Z", "+00:00"))
+
+
+def _phase2(resp: httpx.Response) -> httpx.Response:
+    """Skip when the app under test has not shipped the phase 2 endpoints (501 not_implemented)."""
+    if resp.status_code == 501:
+        assert_error(resp, 501, "not_implemented")
+        pytest.skip("endpoint not implemented by the app under test")
+    return resp
+
+
+def _new_incident(client: httpx.Client, aware_at: datetime) -> httpx.Response:
+    return client.post(
+        "/admin/incidents",
+        json={"title": "Conformance incident", "aware_at": aware_at.isoformat(), "affected_count": 3},
+        headers=admin("handler"),
+    )
+
+
+def test_incident_roundtrip_and_clocks(client: httpx.Client) -> None:
+    aware_at = datetime.now(timezone.utc).replace(microsecond=0) - timedelta(hours=1)
+    resp = _phase2(_new_incident(client, aware_at))
+    assert resp.status_code == 201, resp.text
+    incident = resp.json()
+    assert_schema(incident, "Incident")
+    assert incident["title"] == "Conformance incident"
+    assert _ts(incident["aware_at"]) == aware_at
+    assert aware_at < _ts(incident["board_report_due"]) <= aware_at + timedelta(hours=72)
+    if incident.get("cert_in_report_due"):
+        assert aware_at < _ts(incident["cert_in_report_due"]) <= aware_at + timedelta(hours=6)
+
+    listed = client.get("/admin/incidents", headers=admin("viewer"))
+    assert listed.status_code == 200, listed.text
+    items = {i["id"]: i for i in listed.json()["items"]}
+    assert incident["id"] in items
+    assert_schema(items[incident["id"]], "Incident")
+
+
+def test_incident_report_is_a_draft(client: httpx.Client) -> None:
+    created = _phase2(_new_incident(client, datetime.now(timezone.utc)))
+    assert created.status_code == 201, created.text
+    resp = client.get(f"/admin/incidents/{created.json()['id']}/report", headers=admin("handler"))
+    assert resp.status_code == 200, resp.text
+    assert resp.headers["content-type"].startswith("text/markdown")
+    assert resp.text.strip()
+    assert_error(client.get("/admin/incidents/nope/report", headers=admin("handler")), 404, "not_found")
+
+
+def test_incident_endpoints_enforce_roles_and_bodies(client: httpx.Client, principal: str) -> None:
+    _phase2(client.get("/admin/incidents", headers=admin("viewer")))
+    assert client.get("/admin/incidents", headers=user(principal)).status_code in (401, 403)
+    now = datetime.now(timezone.utc).isoformat()
+    refused = client.post("/admin/incidents", json={"title": "x", "aware_at": now}, headers=admin("viewer"))
+    assert_error(refused, 403)
+    assert_error(client.post("/admin/incidents", json={"title": "x"}, headers=admin("handler")), 422)
+    assert_error(client.post("/admin/incidents", json={"aware_at": now}, headers=admin("handler")), 422)
+
+
+# --------------------------------------------------------------------------- guardians (phase 2)
+
+
+def test_guardian_verification_start(client: httpx.Client, principal: str) -> None:
+    resp = _phase2(client.post("/guardian/verify/start", json={"method": "existing_kyc"}, headers=user(principal)))
+    assert resp.status_code == 202, resp.text
+    body = resp.json()
+    assert_schema(body, "GuardianVerification")
+    assert body["method"] == "existing_kyc" and body["status"] in ("pending", "verified")
+
+
+def test_guardian_verification_rejects_bad_input(client: httpx.Client, principal: str) -> None:
+    _phase2(client.post("/guardian/verify/start", json={"method": "existing_kyc"}, headers=user(principal)))
+    assert_error(client.post("/guardian/verify/start", json={"method": "telepathy"}, headers=user(principal)), 422)
+    assert_error(client.post("/guardian/verify/start", json={}, headers=user(principal)), 422)
+    assert_error(client.post("/guardian/verify/start", json={"method": "existing_kyc"}), 401, "unauthenticated")
+
+
+def test_guardian_callback_unknown_verification(client: httpx.Client, principal: str) -> None:
+    _phase2(client.post("/guardian/verify/start", json={"method": "existing_kyc"}, headers=user(principal)))
+    body = {"verification_id": "nope", "token": "t"}
+    assert_error(client.post("/guardian/verify/callback", json=body, headers=user(principal)), 404, "not_found")
+    assert_error(client.post("/guardian/verify/callback", json={}, headers=user(principal)), 422)
+
+
+def test_guardian_verification_is_per_principal(client: httpx.Client, principal: str) -> None:
+    started = _phase2(client.post("/guardian/verify/start", json={"method": "existing_kyc"}, headers=user(principal)))
+    body = {"verification_id": started.json()["id"], "token": "t"}
+    other = client.post("/guardian/verify/callback", json=body, headers=user(principal + "-other"))
+    assert_error(other, 404, "not_found")
 
 
 def test_activity_signal(client: httpx.Client, principal: str) -> None:

@@ -3,6 +3,10 @@
 ## Unreleased
 
 ### Added
+- Conformance tests for the incident endpoints (register, 72-hour Board and 6-hour CERT-In clocks, draft report,
+  roles) and the new guardian endpoints. They skip while the app under test answers `501 not_implemented`.
+- `POST /guardian/verify/start` and `POST /guardian/verify/callback` (marked `x-dpdpkit-phase: 2`) with the
+  `GuardianVerification` schema. Additive; no existing operation changes.
 - Breaking-change check (oasdiff) on pull requests that touch `openapi.yaml`; override with the
   `breaking-change` label.
 - Upgrade tests: `dpdpkit-conformance upgrade seed --state FILE` records consent, request and ledger data on the

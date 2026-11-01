@@ -32,6 +32,7 @@ tags:
   - name: consents
   - name: requests
   - name: principal
+  - name: guardian
   - name: admin
   - name: events
 
@@ -312,6 +313,50 @@ paths:
           content:
             text/markdown:
               schema: { type: string }
+        "501": { $ref: "#/components/responses/Error" }
+
+  /guardian/verify/start:
+    x-dpdpkit-phase: 2
+    post:
+      tags: [guardian]
+      operationId: startGuardianVerification
+      summary: Start verifying the guardian of the calling principal (a child, or a person with disability).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/GuardianVerifyStart" }
+      responses:
+        "202":
+          description: Verification started; it completes when the verifier calls back.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/GuardianVerification" }
+        "401": { $ref: "#/components/responses/Error" }
+        "422": { $ref: "#/components/responses/Error" }
+        "501": { $ref: "#/components/responses/Error" }
+
+  /guardian/verify/callback:
+    x-dpdpkit-phase: 2
+    post:
+      tags: [guardian]
+      operationId: guardianVerificationCallback
+      summary: Complete a verification with the token or result returned by the verifier.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/GuardianVerifyCallback" }
+      responses:
+        "200":
+          description: The verification with its outcome.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/GuardianVerification" }
+        "401": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+        "409": { $ref: "#/components/responses/Error" }
+        "422": { $ref: "#/components/responses/Error" }
         "501": { $ref: "#/components/responses/Error" }
 
   /admin/audit/export:
@@ -597,6 +642,36 @@ components:
         aware_at: { $ref: "#/components/schemas/Timestamp" }
         description: { type: string }
         affected_count: { type: integer, minimum: 0 }
+
+    GuardianVerifyStart:
+      type: object
+      required: [method]
+      properties:
+        method: { $ref: "#/components/schemas/GuardianMethod" }
+        guardian_ref: { type: string, description: Stable reference for the guardian; no personal data. }
+
+    GuardianVerifyCallback:
+      type: object
+      required: [verification_id]
+      properties:
+        verification_id: { type: string }
+        token: { type: string, description: Token or result handed back by the verifier. }
+
+    GuardianMethod:
+      type: string
+      enum: [existing_kyc, digilocker_token, partner_token, court_order]
+
+    GuardianVerification:
+      type: object
+      required: [id, method, status]
+      properties:
+        id: { type: string }
+        method: { $ref: "#/components/schemas/GuardianMethod" }
+        status: { type: string, enum: [pending, verified, failed] }
+        redirect_url:
+          description: Where to send the guardian to complete verification, when the verifier needs it.
+          oneOf: [{ type: string }, { type: "null" }]
+        verified_at: { oneOf: [{ $ref: "#/components/schemas/Timestamp" }, { type: "null" }] }
 
     Incident:
       type: object
