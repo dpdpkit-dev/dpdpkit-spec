@@ -247,6 +247,19 @@ paths:
         "409": { $ref: "#/components/responses/Error" }
         "422": { $ref: "#/components/responses/Error" }
 
+  /admin/consent/stats:
+    get:
+      tags: [admin]
+      operationId: adminConsentStats
+      x-dpdpkit-role: viewer
+      responses:
+        "200":
+          description: Grants, denials and withdrawals per purpose and notice version. Contains no personal data.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ConsentStats" }
+        "403": { $ref: "#/components/responses/Error" }
+
   /admin/retention/preview:
     get:
       tags: [admin]
@@ -598,6 +611,24 @@ components:
               principal: { type: string }
               purpose: { type: string }
               reason: { type: [string, "null"] }
+
+    ConsentStats:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items:
+            type: object
+            required: [purpose, notice_version, grants, denials, withdrawals]
+            properties:
+              purpose: { type: string }
+              notice_version:
+                type: [integer, "null"]
+                description: The notice version consented to. A withdrawal counts against the version last granted.
+              grants: { type: integer, minimum: 0 }
+              denials: { type: integer, minimum: 0 }
+              withdrawals: { type: integer, minimum: 0 }
 
     LedgerVerification:
       type: object

@@ -192,6 +192,20 @@ def test_admin_request_workflow(client: httpx.Client, principal: str) -> None:
     assert_error(client.patch(f"/admin/requests/{rid}", json={"action": "fly"}, headers=admin("handler")), 422)
 
 
+def test_consent_stats(client: httpx.Client, principal: str, purpose: str) -> None:
+    def grants() -> int:
+        resp = client.get("/admin/consent/stats", headers=admin("viewer"))
+        assert resp.status_code == 200
+        body = resp.json()
+        assert_schema(body, "ConsentStats")
+        return sum(row["grants"] for row in body["items"] if row["purpose"] == purpose)
+
+    assert_error(client.get("/admin/consent/stats", headers=user(principal)), 403)
+    before = grants()
+    _grant(client, principal, purpose)
+    assert grants() == before + 1
+
+
 def test_retention_preview(client: httpx.Client) -> None:
     resp = client.get("/admin/retention/preview", params={"hours": 24 * 60}, headers=admin("viewer"))
     assert resp.status_code == 200

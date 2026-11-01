@@ -15,6 +15,7 @@ CONTRACT = {
     ("get", "/me/export"),
     ("get", "/admin/requests"),
     ("patch", "/admin/requests/{id}"),
+    ("get", "/admin/consent/stats"),
     ("get", "/admin/retention/preview"),
     ("get", "/admin/incidents"),
     ("post", "/admin/incidents"),

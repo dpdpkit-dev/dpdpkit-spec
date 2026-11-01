@@ -3,6 +3,8 @@
 ## Unreleased
 
 ### Added
+- `GET /admin/consent/stats` (viewer role) with the `ConsentStats` schema, and a conformance test for it: grants,
+  denials and withdrawals per purpose and notice version, for the admin dashboard. Additive.
 - Conformance tests for the incident endpoints (register, 72-hour Board and 6-hour CERT-In clocks, draft report,
   roles) and the new guardian endpoints. They skip while the app under test answers `501 not_implemented`.
 - `POST /guardian/verify/start` and `POST /guardian/verify/callback` (marked `x-dpdpkit-phase: 2`) with the
