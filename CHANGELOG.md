@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 0.1.0a2 - 2026-11-02
+
 ### Added
 - `GET /admin/consent/stats` (viewer role) with the `ConsentStats` schema, and a conformance test for it: grants,
   denials and withdrawals per purpose and notice version, for the admin dashboard. Additive.
